@@ -30,15 +30,17 @@ export async function analyzeFoodWithGemini(
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
 
     // Construct the prompt for food analysis
-    const prompt = `Analyze the nutritional content of ${foodName}. Provide the following information:
-      1. Estimated calories per 100g
-      2. Protein content in grams per 100g
-      3. Carbohydrate content in grams per 100g
-      4. Fat content in grams per 100g
-      5. Categorize this food as either 'cutting' (good for weight loss), 'bulking' (good for muscle gain), or 'general' (balanced nutrition)
-      6. Brief reasoning for the category assignment
+    const prompt = `You're a fitness and nutrition expert. Given a dish or list of ingredients "${foodName}", respond with the estimated calories, macro-nutrient split, and whether this dish supports a person's goal: bulking, cutting, or general health maintenance.
+
+    Please analyze the nutritional content and provide the following information:
+      1. Estimated calories per serving
+      2. Protein content in grams per serving
+      3. Carbohydrate content in grams per serving
+      4. Fat content in grams per serving
+      5. Categorize this food as either 'cutting' (good for weight loss - high protein, low calorie, low carb), 'bulking' (good for muscle gain - high protein, calorie dense), or 'general' (balanced nutrition)
+      6. Brief reasoning for the category assignment (2-3 sentences max)
       
-      Format your response as a JSON object with the following structure:
+      IMPORTANT: Format your response ONLY as a valid JSON object with the following structure and nothing else:
       {
         "name": "${foodName}",
         "calories": number,
@@ -49,7 +51,7 @@ export async function analyzeFoodWithGemini(
         "reasoning": "brief explanation"
       }
       
-      Only return the JSON object, nothing else.`;
+      Do not include any text before or after the JSON. Do not include markdown formatting, code blocks, or any other text. Only return the JSON object itself. Be accurate but reasonable with your nutritional estimates.`;
 
     // Generate content
     const result = await model.generateContent(prompt);
@@ -58,11 +60,47 @@ export async function analyzeFoodWithGemini(
 
     // Parse the JSON response
     try {
-      const parsedResult = JSON.parse(text);
-      return parsedResult as GeminiFoodAnalysisResult;
+      // Try to extract JSON from the response if it's not pure JSON
+      let jsonText = text;
+
+      // Look for JSON object pattern in the response
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        jsonText = jsonMatch[0];
+      }
+
+      const parsedResult = JSON.parse(jsonText);
+
+      // Validate and sanitize the parsed result
+      const sanitizedResult: GeminiFoodAnalysisResult = {
+        name: parsedResult.name || foodName,
+        calories: Number(parsedResult.calories) || 0,
+        protein: Number(parsedResult.protein) || 0,
+        carbs: Number(parsedResult.carbs) || 0,
+        fat: Number(parsedResult.fat) || 0,
+        category: ["cutting", "bulking", "general"].includes(
+          parsedResult.category,
+        )
+          ? (parsedResult.category as "cutting" | "bulking" | "general")
+          : "general",
+        reasoning: parsedResult.reasoning || "No reasoning provided",
+      };
+
+      return sanitizedResult;
     } catch (parseError) {
       console.error("Failed to parse Gemini response:", text);
-      throw new Error("Failed to parse Gemini response");
+
+      // Create a fallback response instead of throwing
+      return {
+        name: foodName,
+        calories: 0,
+        protein: 0,
+        carbs: 0,
+        fat: 0,
+        category: "general",
+        reasoning:
+          "Unable to analyze this food item. The AI model couldn't provide accurate nutritional information.",
+      };
     }
   } catch (error) {
     console.error("Error analyzing food with Gemini:", error);

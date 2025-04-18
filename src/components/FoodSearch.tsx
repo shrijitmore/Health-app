@@ -135,6 +135,19 @@ const FoodSearch = ({ onAddFood = () => {} }: FoodSearchProps) => {
       // Call Gemini API for food analysis
       const geminiResult = await analyzeFoodWithGemini(searchQuery);
 
+      // Check if we got a valid result with calories
+      if (
+        geminiResult.calories === 0 &&
+        geminiResult.protein === 0 &&
+        geminiResult.carbs === 0 &&
+        geminiResult.fat === 0
+      ) {
+        // This is likely our fallback response
+        throw new Error(
+          geminiResult.reasoning || "Failed to analyze food properly",
+        );
+      }
+
       // Convert Gemini result to FoodItem format
       const aiResult: FoodItem & { reasoning?: string } = {
         id: `ai-${Date.now()}`,
@@ -151,7 +164,11 @@ const FoodSearch = ({ onAddFood = () => {} }: FoodSearchProps) => {
       setShowAIAnalysis(false);
     } catch (error) {
       console.error("Error during AI analysis:", error);
-      setAiAnalysisError("Failed to analyze food. Please try again.");
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to analyze food. Please try again.";
+      setAiAnalysisError(errorMessage);
     } finally {
       setIsLoading(false);
     }

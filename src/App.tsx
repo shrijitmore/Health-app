@@ -37,9 +37,16 @@ function App() {
     );
   }
 
+  // Always call useRoutes, but only use the result if VITE_TEMPO is true
+  const tempoRoutes = useRoutes(routes);
+  const showTempoRoutes = import.meta.env.VITE_TEMPO === "true";
+
   return (
     <Suspense fallback={<p>Loading...</p>}>
       <>
+        {/* Render Tempo routes if enabled */}
+        {showTempoRoutes && tempoRoutes}
+
         <Routes>
           <Route
             path="/"
@@ -77,8 +84,9 @@ function App() {
               )
             }
           />
+          {/* Add a route for Tempo storyboards */}
+          {showTempoRoutes && <Route path="/tempobook/*" element={<></>} />}
         </Routes>
-        {import.meta.env.VITE_TEMPO === "true" && useRoutes(routes)}
       </>
     </Suspense>
   );

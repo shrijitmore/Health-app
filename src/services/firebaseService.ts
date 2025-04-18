@@ -98,17 +98,64 @@ export const createUserProfile = async (
   profileData: Partial<UserProfile>,
 ) => {
   try {
+    if (!user || !user.uid) {
+      console.error("Invalid user object provided to createUserProfile:", user);
+      throw new Error("Invalid user object");
+    }
+
+    // Create a sanitized profile object with default values
     const userProfile: UserProfile = {
       uid: user.uid,
       email: user.email || undefined,
       displayName: user.displayName || undefined,
       setupCompleted: false,
-      ...profileData,
+      fitnessGoal: "maintenance",
+      caloriesGoal: 2000,
+      macros: {
+        protein: 120,
+        carbs: 200,
+        fat: 65,
+      },
     };
 
-    await setDoc(doc(db, "users", user.uid), userProfile);
+    // Safely merge in provided profile data
+    if (profileData.displayName)
+      userProfile.displayName = profileData.displayName;
+    if (profileData.email) userProfile.email = profileData.email;
+    if (profileData.fitnessGoal)
+      userProfile.fitnessGoal = profileData.fitnessGoal;
+    if (profileData.caloriesGoal)
+      userProfile.caloriesGoal = profileData.caloriesGoal;
+    if (profileData.setupCompleted !== undefined)
+      userProfile.setupCompleted = profileData.setupCompleted;
+
+    // Handle macros object separately
+    if (profileData.macros) {
+      userProfile.macros = {
+        protein:
+          Number(profileData.macros.protein) || userProfile.macros!.protein,
+        carbs: Number(profileData.macros.carbs) || userProfile.macros!.carbs,
+        fat: Number(profileData.macros.fat) || userProfile.macros!.fat,
+      };
+    }
+
+    console.log("Creating user profile with data:", userProfile);
+
+    // Check if document already exists
+    const userRef = doc(db, "users", user.uid);
+    const docSnap = await getDoc(userRef);
+
+    if (docSnap.exists()) {
+      console.log("Document already exists, updating instead of creating");
+      await updateDoc(userRef, userProfile);
+    } else {
+      await setDoc(userRef, userProfile);
+    }
+
     return userProfile;
-  } catch (error) {
+  } catch (error: any) {
+    console.error("Error creating user profile:", error);
+    console.error("Error details:", error.code, error.message);
     throw error;
   }
 };
@@ -136,10 +183,53 @@ export const updateUserProfile = async (
   profileData: Partial<UserProfile>,
 ) => {
   try {
+    // Validate userId
+    if (!userId || typeof userId !== "string") {
+      console.error("Invalid userId provided to updateUserProfile:", userId);
+      throw new Error("Invalid user ID");
+    }
+
+    // Sanitize and validate profileData
+    const sanitizedData: Partial<UserProfile> = {};
+
+    // Only copy valid fields to avoid sending invalid data to Firestore
+    if (profileData.displayName !== undefined)
+      sanitizedData.displayName = profileData.displayName;
+    if (profileData.email !== undefined)
+      sanitizedData.email = profileData.email;
+    if (profileData.fitnessGoal !== undefined)
+      sanitizedData.fitnessGoal = profileData.fitnessGoal;
+    if (profileData.caloriesGoal !== undefined)
+      sanitizedData.caloriesGoal = profileData.caloriesGoal;
+    if (profileData.setupCompleted !== undefined)
+      sanitizedData.setupCompleted = profileData.setupCompleted;
+
+    // Handle macros object separately to ensure it has the correct structure
+    if (profileData.macros) {
+      sanitizedData.macros = {
+        protein: Number(profileData.macros.protein) || 0,
+        carbs: Number(profileData.macros.carbs) || 0,
+        fat: Number(profileData.macros.fat) || 0,
+      };
+    }
+
+    console.log("Updating user profile with data:", sanitizedData);
+
+    // Check if document exists before updating
     const userRef = doc(db, "users", userId);
-    await updateDoc(userRef, profileData);
+    const docSnap = await getDoc(userRef);
+
+    if (!docSnap.exists()) {
+      console.log("Document does not exist, creating instead of updating");
+      await setDoc(userRef, sanitizedData);
+    } else {
+      await updateDoc(userRef, sanitizedData);
+    }
+
     return true;
-  } catch (error) {
+  } catch (error: any) {
+    console.error("Error updating user profile:", error);
+    console.error("Error details:", error.code, error.message);
     throw error;
   }
 };
